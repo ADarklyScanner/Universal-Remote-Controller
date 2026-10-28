@@ -9,3 +9,7 @@ Run the same checks locally:
 ```sh
 ./gradlew build :app:assembleDebug   # APK: app/build/outputs/apk/debug/
 ```
+
+## App connections
+
+The Android app connects over Wi-Fi (TCP), Bluetooth Classic (pair in system settings first), Bluetooth LE (scans for 5 s) and USB. USB supports CDC-ACM devices only (Arduino/ESP32 native USB, STM32, RP2040, most flight controllers); FTDI/CH340/CP210x adapters are not supported yet. After connecting, the app probes read-only, builds a control map and waits for ARM. If the protocol is not recognised the commands are guessed and the app warns you.
