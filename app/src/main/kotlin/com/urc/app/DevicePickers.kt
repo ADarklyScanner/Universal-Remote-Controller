@@ -70,6 +70,7 @@ fun Activity.pickBleDevice(onPick: (BluetoothDevice) -> Unit) {
     }, SCAN_MS)
 }
 
+@SuppressLint("UnspecifiedRegisterReceiverFlag") // the flag only exists on API 33+; that branch sets it below
 /** Lists attached USB devices and asks Android for permission to the chosen one. */
 fun Activity.pickUsbDevice(onGranted: (UsbManager, UsbDevice) -> Unit) {
     val manager = getSystemService(Context.USB_SERVICE) as UsbManager
