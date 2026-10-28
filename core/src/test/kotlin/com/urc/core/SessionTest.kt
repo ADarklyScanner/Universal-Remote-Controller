@@ -60,3 +60,25 @@ class SessionTest {
         assertFalse(s.arm())
     }
 }
+
+class SessionAutoTest {
+    @Test fun defaultsAutoMapAnyTransport() = runBlocking {
+        val car = Vehicles.mavlinkDrone()
+        val s = ControlSession(
+            car, ProbeEngine(options = ProbeOptions(passiveMs = 50, probeTimeoutMs = 20, minIntervalMs = 1)),
+            inputs = { emptyMap() }, scope = CoroutineScope(Dispatchers.Default),
+        )
+        s.connectAndProbe()
+        assertTrue(s.state.value is SessionState.Ready)
+        s.close()
+    }
+
+    @Test fun probeTimeoutIsBounded() = runBlocking {
+        val s = ControlSession(
+            Vehicles.bleUartCar(), ProbeEngine(options = ProbeOptions(passiveMs = 5000)),
+            inputs = { emptyMap() }, scope = CoroutineScope(Dispatchers.Default), probeTimeoutMs = 100,
+        )
+        s.connectAndProbe()
+        assertTrue(s.state.value is SessionState.Error)
+    }
+}

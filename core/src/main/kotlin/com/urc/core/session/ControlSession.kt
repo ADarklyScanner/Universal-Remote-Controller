@@ -3,6 +3,7 @@ package com.urc.core.session
 import com.urc.core.mapping.ControlLoop
 import com.urc.core.mapping.ControllerMap
 import com.urc.core.mapping.FailsafeController
+import com.urc.core.mapping.MapGenerator
 import com.urc.core.probe.ProbeEngine
 import com.urc.core.probe.ProbeReport
 import com.urc.core.transport.Transport
@@ -12,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed interface SessionState {
     data object Idle : SessionState
@@ -25,14 +27,16 @@ sealed interface SessionState {
 
 /**
  * Operator-facing session: connect -> probe -> Ready -> (explicit) arm -> Armed. Nothing is sent to the vehicle
- * while not Armed. Disarm / emergency stop always send neutral output first. The Android service and UI drive this.
+ * while not Armed. Works with any [Transport]: one call does connect + (bounded) probe + automatic
+ * mapping. Disarm / emergency stop always send neutral output first. The Android service and UI drive this.
  */
 class ControlSession(
     private val transport: Transport,
-    private val probeEngine: ProbeEngine,
-    private val mapFor: (ProbeReport) -> ControllerMap?,
+    private val probeEngine: ProbeEngine = ProbeEngine(),
+    private val mapFor: (ProbeReport) -> ControllerMap? = { MapGenerator().generate(it) },
     private val inputs: () -> Map<String, Double>,
     private val scope: CoroutineScope,
+    private val probeTimeoutMs: Long = 30_000,
 ) {
     private val st = MutableStateFlow<SessionState>(SessionState.Idle)
     val state: StateFlow<SessionState> = st
@@ -48,7 +52,11 @@ class ControlSession(
         try {
             transport.connect()
             st.value = SessionState.Probing
-            val report = probeEngine.run(transport, deviceName)
+            val report = withTimeoutOrNull(probeTimeoutMs) { probeEngine.run(transport, deviceName) }
+            if (report == null) {
+                st.value = SessionState.Error("Probe timed out")
+                return
+            }
             val m = mapFor(report)
             if (m == null) {
                 st.value = SessionState.Error("No safe control map for detected protocol")
