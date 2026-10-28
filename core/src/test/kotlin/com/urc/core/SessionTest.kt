@@ -9,6 +9,7 @@ import com.urc.core.sim.Vehicles
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -80,5 +81,35 @@ class SessionAutoTest {
         )
         s.connectAndProbe()
         assertTrue(s.state.value is SessionState.Error)
+    }
+}
+
+class NetTransportTest {
+    @Test fun tcpRoundTrip() = runBlocking {
+        val server = java.net.ServerSocket(0)
+        val srv = Thread {
+            server.accept().use { c -> val b = c.getInputStream().readNBytes(3); c.getOutputStream().write(b.reversedArray()) }
+        }.also { it.start() }
+        val t = com.urc.core.transport.TcpTransport("127.0.0.1", server.localPort)
+        val got = kotlinx.coroutines.CompletableDeferred<ByteArray>()
+        val job = kotlinx.coroutines.GlobalScope.launch(Dispatchers.Unconfined) {
+            t.incoming.collect { got.complete(it) }
+        }
+        t.connect()
+        t.send(byteArrayOf(1, 2, 3))
+        assertEquals(listOf<Byte>(3, 2, 1), kotlinx.coroutines.withTimeout(3000) { got.await() }.toList())
+        job.cancel(); t.disconnect(); srv.join(); server.close()
+    }
+
+    @Test fun udpSend() = runBlocking {
+        val sock = java.net.DatagramSocket(0)
+        val t = com.urc.core.transport.UdpTransport("127.0.0.1", sock.localPort)
+        t.connect()
+        t.send(byteArrayOf(9, 8))
+        val p = java.net.DatagramPacket(ByteArray(8), 8)
+        sock.soTimeout = 3000
+        sock.receive(p)
+        assertEquals(2, p.length)
+        t.disconnect(); sock.close()
     }
 }
