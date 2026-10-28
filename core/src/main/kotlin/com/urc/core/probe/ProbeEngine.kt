@@ -102,7 +102,7 @@ class ProbeEngine(
             val before = captured.size
             delay(options.passiveMs / 2)
             val data = captured.drop(before).flatMap { it.data.toList() }.toByteArray()
-            val score = if (data.size >= 4) FrameClassifier.printableRatio(data) else 0.0
+            val score = if (data.size >= 4) maxOf(FrameClassifier.printableRatio(data), FrameClassifier.mavlinkScore(data)) else 0.0
             if (score > bestScore) {
                 bestScore = score
                 best = b
