@@ -1,0 +1,23 @@
+style:
+  MagicNumber:
+    active: false
+  ReturnCount:
+    active: false
+  MaxLineLength:
+    maxLineLength: 170
+  LoopWithTooManyJumpStatements:
+    active: false
+complexity:
+  TooManyFunctions:
+    active: false
+  LongMethod:
+    threshold: 80
+  CyclomaticComplexMethod:
+    threshold: 25
+  LongParameterList:
+    active: false
+  NestedBlockDepth:
+    threshold: 6
+naming:
+  MatchingDeclarationName:
+    active: false
