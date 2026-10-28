@@ -20,8 +20,9 @@ sealed interface SessionState {
     data object Connecting : SessionState
     data object Probing : SessionState
     /** Probed and mapped, outputs are NOT being sent. Operator must call [ControlSession.arm]. */
-    data class Ready(val report: ProbeReport) : SessionState
-    data class Armed(val report: ProbeReport) : SessionState
+    /** [guessed] = commands were inferred without a known protocol; UIs must warn before arming. */
+    data class Ready(val report: ProbeReport, val guessed: Boolean = false) : SessionState
+    data class Armed(val report: ProbeReport, val guessed: Boolean = false) : SessionState
     data class Error(val message: String) : SessionState
 }
 
@@ -67,7 +68,7 @@ class ControlSession(
             }
             map = m
             failsafe = FailsafeController(m, transport)
-            st.value = SessionState.Ready(report)
+            st.value = SessionState.Ready(report, guessed = m.profileId == null || m.profileId == "serial-car")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -81,7 +82,7 @@ class ControlSession(
         val m = map ?: return false
         val fs = failsafe ?: return false
         loop = scope.launch { ControlLoop(m, transport, fs, inputs = inputs).run() }
-        st.value = SessionState.Armed(ready.report)
+        st.value = SessionState.Armed(ready.report, ready.guessed)
         return true
     }
 
@@ -91,7 +92,7 @@ class ControlSession(
         loop?.cancel()
         loop = null
         failsafe?.emergencyStop()
-        if (armed != null) st.value = SessionState.Ready(armed.report)
+        if (armed != null) st.value = SessionState.Ready(armed.report, armed.guessed)
     }
 
     suspend fun emergencyStop() = disarm()

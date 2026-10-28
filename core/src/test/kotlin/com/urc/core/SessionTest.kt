@@ -113,3 +113,35 @@ class NetTransportTest {
         t.disconnect(); sock.close()
     }
 }
+
+class ProbeGapsTest {
+    @Test fun mavlinkSplitAcrossChunksIsDetected() {
+        val hb = com.urc.core.protocol.Mavlink.heartbeatV2()
+        val d = com.urc.core.protocol.FrameClassifier.classify(listOf(hb.copyOfRange(0, 5), hb.copyOfRange(5, hb.size)))
+        assertEquals(com.urc.core.protocol.ProtocolKind.MAVLINK, d.kind)
+    }
+
+    @Test fun mavlinkScoreRewardsBinaryFrames() {
+        val hb = com.urc.core.protocol.Mavlink.heartbeatV2()
+        assertTrue(com.urc.core.protocol.FrameClassifier.mavlinkScore(hb + hb) > 0.3)
+        assertEquals(0.0, com.urc.core.protocol.FrameClassifier.mavlinkScore(byteArrayOf(1, 2, 3, 4)))
+    }
+
+    @Test fun keyValueLinesSplitAcrossChunksAreExtracted() {
+        val f = com.urc.core.protocol.FrameClassifier.extractFields(listOf("batt=7".toByteArray(), ".4\nspeed=3\n".toByteArray()))
+        assertEquals(listOf(7.4), f["batt"])
+        assertEquals(listOf(3.0), f["speed"])
+    }
+
+    @Test fun unknownProtocolIsFlaggedAsGuessed() = runBlocking {
+        val silent = com.urc.core.sim.FakeTransport()
+        val s = ControlSession(
+            silent, ProbeEngine(options = ProbeOptions(passiveMs = 20, probeTimeoutMs = 10, minIntervalMs = 1)),
+            inputs = { emptyMap() }, scope = CoroutineScope(Dispatchers.Default),
+        )
+        s.connectAndProbe()
+        val st = s.state.value
+        assertTrue(st is SessionState.Ready && st.guessed)
+        s.close()
+    }
+}

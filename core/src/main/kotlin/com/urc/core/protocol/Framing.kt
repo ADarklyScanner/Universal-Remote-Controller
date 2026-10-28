@@ -19,12 +19,12 @@ object FrameClassifier {
     fun classify(samples: List<ByteArray>): Detection {
         val nonEmpty = samples.filter { it.isNotEmpty() }
         if (nonEmpty.isEmpty()) return Detection(ProtocolKind.UNKNOWN, 0.0)
-        val mav = nonEmpty.count { Mavlink.parse(it).isNotEmpty() }
+        val mav = maxOf(nonEmpty.count { Mavlink.parse(it).isNotEmpty() }, Mavlink.parse(join(nonEmpty)).size)
         if (mav > 0) return Detection(ProtocolKind.MAVLINK, (0.6 + 0.2 * mav).coerceAtMost(0.99), "MAVLink frames with valid CRC")
         val text = nonEmpty.map { String(it, Charsets.ISO_8859_1) }
         val printable = text.all { s -> s.all { it == '\n' || it == '\r' || it == '\t' || it in ' '..'~' } }
         if (printable) {
-            val lines = text.flatMap { it.split('\n', '\r') }.map { it.trim() }.filter { it.isNotEmpty() }
+            val lines = textLines(nonEmpty)
             if (lines.isNotEmpty()) {
                 val jsonCount = lines.count { parseJson(it) != null }
                 if (jsonCount == lines.size) return Detection(ProtocolKind.JSON, 0.9, "JSON objects")
@@ -43,14 +43,45 @@ object FrameClassifier {
         return Detection(ProtocolKind.BINARY, 0.3)
     }
 
+    /**
+     * Lines from captured chunks. A chunk that does not end in a line break and is not itself a complete JSON object is
+     * treated as continued by the next chunk (serial/BLE reads often split lines).
+     */
+    private fun textLines(chunks: List<ByteArray>): List<String> {
+        val lines = mutableListOf<String>()
+        val pending = StringBuilder()
+        fun flush() {
+            pending.toString().split('\n', '\r').map { it.trim() }.filter { it.isNotEmpty() }.let { lines += it }
+            pending.clear()
+        }
+        for (c in chunks) {
+            pending.append(String(c, Charsets.ISO_8859_1))
+            val whole = pending.toString()
+            if (whole.endsWith('\n') || whole.endsWith('\r') || parseJson(whole.trim()) != null) flush()
+        }
+        flush()
+        return lines
+    }
+
+    private fun join(chunks: List<ByteArray>): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        chunks.forEach { out.write(it) }
+        return out.toByteArray()
+    }
+
+    /** Fraction of [data] covered by valid MAVLink frames, 0.0..1.0. Used to detect baud on binary links. */
+    fun mavlinkScore(data: ByteArray): Double =
+        if (data.isEmpty()) 0.0 else (Mavlink.parse(data).size * MIN_MAV_FRAME).toDouble().div(data.size).coerceAtMost(1.0)
+
+    private const val MIN_MAV_FRAME = 12
+
     fun parseJson(s: String): JsonObject? = runCatching { Json.parseToJsonElement(s) as? JsonObject }.getOrNull()
 
     /** Extract numeric fields from JSON or key:value lines. */
     fun extractFields(samples: List<ByteArray>): Map<String, List<Double>> {
         val acc = linkedMapOf<String, MutableList<Double>>()
-        for (s in samples) {
-            val text = String(s, Charsets.ISO_8859_1)
-            for (line in text.split('\n', '\r').map { it.trim() }.filter { it.isNotEmpty() }) {
+        run {
+            for (line in textLines(samples)) {
                 val obj = parseJson(line)
                 if (obj != null) {
                     flatten("", obj, acc)
