@@ -42,6 +42,9 @@ class ControlSession(
     val state: StateFlow<SessionState> = st
 
     private var map: ControllerMap? = null
+
+    /** The generated map once Ready; UIs build their controls from its bindings. */
+    val controllerMap: ControllerMap? get() = map
     private var failsafe: FailsafeController? = null
     private var loop: Job? = null
 

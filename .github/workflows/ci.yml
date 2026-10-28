@@ -32,8 +32,16 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
-      - name: Build, test and run detekt (all modules)
-        run: ./gradlew build --stacktrace
+      - name: Build, test, detekt and assemble debug APK
+        run: ./gradlew build :app:assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload test and detekt reports
         if: failure()
